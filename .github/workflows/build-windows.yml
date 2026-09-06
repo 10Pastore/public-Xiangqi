@@ -1,0 +1,71 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'          # 推送 v1.0、v1.9 这类 tag 时触发
+  workflow_dispatch:  # 也可在 Actions 页面手动点 Run
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn -B clean package -DskipTests
+
+      # 用 jpackage 打 Windows 可执行文件
+      - name: Create EXE with jpackage
+        shell: pwsh
+        run: |
+          # 先确认 jar 位置（根据实际 target 调整）
+          $jar = Get-ChildItem -Path target -Filter "*.jar" | Where-Object { $_.Name -notlike "*-sources*" -and $_.Name -notlike "*-javadoc*" } | Select-Object -First 1
+          if (-not $jar) { throw "找不到 jar 包，请检查 mvn package 结果" }
+          Write-Host "使用 jar: $($jar.FullName)"
+
+          # 创建输出目录
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          # jpackage 打包（生成安装包或绿色版）
+          jpackage `
+            --type app-image `
+            --name TChess `
+            --input target `
+            --main-jar $jar.Name `
+            --main-class com.sojourners.chess.Main `
+            --dest dist `
+            --java-options "-Dfile.encoding=UTF-8" `
+            --app-version ${{ github.ref_name }} `
+            --vendor "TChess" `
+            --description "TChess Xiangqi GUI"
+
+      - name: Zip the app-image
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\TChess\* -DestinationPath dist\TChess-Windows.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TChess-Windows
+          path: dist/TChess-Windows.zip
+
+      # 如果是打了 tag，自动发到 Release
+      - name: Create Release and Upload
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/TChess-Windows.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
