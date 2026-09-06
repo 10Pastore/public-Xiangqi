@@ -61,13 +61,15 @@ jobs:
           jpackage `
             --type app-image `
             --name TChess `
-            --module-path "target\app-input" `
-            --module "Xiangqi/com.sojourners.chess.Main" `
+            --input "target\app-input" `
+            --main-jar "Xiangqi-1.0-SNAPSHOT.jar" `
+            --main-class "com.sojourners.chess.Main" `
             --dest dist `
             --app-version "${{ steps.ver.outputs.version }}" `
             --vendor "TChess" `
             --description "TChess Xiangqi GUI" `
-            --java-options "-Dfile.encoding=UTF-8"
+            --java-options "-Dfile.encoding=UTF-8" `
+            --java-options "--add-modules=javafx.controls,javafx.fxml,javafx.graphics,javafx.media,javafx.swing"
 
       - name: Zip the app-image
         shell: pwsh
