@@ -3,8 +3,8 @@ name: Build Windows EXE
 on:
   push:
     tags:
-      - 'v*'          # 推送 v1.0、v1.9 这类 tag 时触发
-  workflow_dispatch:  # 也可在 Actions 页面手动点 Run
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -24,19 +24,31 @@ jobs:
       - name: Build with Maven
         run: mvn -B clean package -DskipTests
 
-      # 用 jpackage 打 Windows 可执行文件
+      - name: Determine app version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -match "^refs/tags/") {
+            # tag 名去掉开头的 v，例如 v1.9.1 → 1.9.1
+            $v = "${{ github.ref_name }}" -replace '^v',''
+          } else {
+            # 手动触发或普通分支，用固定版本，避免 master 这种非法值
+            $v = "1.0.0"
+          }
+          Write-Host "app-version = $v"
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+
       - name: Create EXE with jpackage
         shell: pwsh
         run: |
-          # 先确认 jar 位置（根据实际 target 调整）
-          $jar = Get-ChildItem -Path target -Filter "*.jar" | Where-Object { $_.Name -notlike "*-sources*" -and $_.Name -notlike "*-javadoc*" } | Select-Object -First 1
+          $jar = Get-ChildItem -Path target -Filter "*.jar" |
+                 Where-Object { $_.Name -notlike "*-sources*" -and $_.Name -notlike "*-javadoc*" } |
+                 Select-Object -First 1
           if (-not $jar) { throw "找不到 jar 包，请检查 mvn package 结果" }
           Write-Host "使用 jar: $($jar.FullName)"
 
-          # 创建输出目录
           New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-          # jpackage 打包（生成安装包或绿色版）
           jpackage `
             --type app-image `
             --name TChess `
@@ -45,7 +57,7 @@ jobs:
             --main-class com.sojourners.chess.Main `
             --dest dist `
             --java-options "-Dfile.encoding=UTF-8" `
-            --app-version ${{ github.ref_name }} `
+            --app-version ${{ steps.ver.outputs.version }} `
             --vendor "TChess" `
             --description "TChess Xiangqi GUI"
 
@@ -60,7 +72,6 @@ jobs:
           name: TChess-Windows
           path: dist/TChess-Windows.zip
 
-      # 如果是打了 tag，自动发到 Release
       - name: Create Release and Upload
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
