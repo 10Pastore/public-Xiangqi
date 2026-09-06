@@ -33,36 +33,38 @@ jobs:
           Write-Host "app-version = $v"
           echo "version=$v" >> $env:GITHUB_OUTPUT
 
-      # Windows 上必须指定 JavaFX 平台，否则可能下到错误原生库
-      - name: Build + jlink (with JavaFX)
+      - name: Maven package
         shell: pwsh
         run: |
-          mvn -B clean package javafx:jlink "-DskipTests" "-Djavafx.platform=win"
+          mvn -B clean package "-DskipTests" "-Djavafx.platform=win"
 
-      - name: Check jlink output
+      - name: Copy runtime jars
         shell: pwsh
         run: |
-          if (-not (Test-Path "target\image")) {
-            Write-Host "target\image 不存在，列出 target 目录："
-            Get-ChildItem target -Recurse -Depth 2 | Select-Object FullName
-            throw "jlink 没有生成 target/image，请检查上面 Maven 日志"
-          }
-          Write-Host "jlink 输出目录内容："
-          Get-ChildItem target\image | Format-Table Name, Length
+          # 所有运行依赖（含 JavaFX win 原生库）
+          mvn -B dependency:copy-dependencies `
+            "-DoutputDirectory=target/app-input" `
+            "-DincludeScope=runtime" `
+            "-Djavafx.platform=win"
+
+          # 主程序 jar
+          Copy-Item "target\Xiangqi-1.0-SNAPSHOT.jar" "target\app-input\" -Force
+
+          Write-Host "app-input 内容："
+          Get-ChildItem target\app-input | Select-Object Name, Length
 
       - name: Create EXE with jpackage
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-          # 用 jlink 生成的 runtime-image，而不是瘦 jar
           jpackage `
             --type app-image `
             --name TChess `
-            --runtime-image target\image `
-            --module Xiangqi/com.sojourners.chess.Main `
+            --module-path "target\app-input" `
+            --module "Xiangqi/com.sojourners.chess.Main" `
             --dest dist `
-            --app-version ${{ steps.ver.outputs.version }} `
+            --app-version "${{ steps.ver.outputs.version }}" `
             --vendor "TChess" `
             --description "TChess Xiangqi GUI" `
             --java-options "-Dfile.encoding=UTF-8"
@@ -71,10 +73,11 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "dist\TChess")) {
-            throw "dist\TChess 不存在，jpackage 可能失败"
+            Write-Host "dist 目录内容："
+            Get-ChildItem dist -Recurse -Depth 2 | Select-Object FullName
+            throw "dist\TChess 不存在，jpackage 失败"
           }
           Compress-Archive -Path dist\TChess\* -DestinationPath dist\TChess-Windows.zip -Force
-          Write-Host "产物大小："
           Get-Item dist\TChess-Windows.zip | Select-Object Name, Length
 
       - name: Upload artifact
