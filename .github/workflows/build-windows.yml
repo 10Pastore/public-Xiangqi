@@ -37,9 +37,7 @@ jobs:
       - name: Build + jlink (with JavaFX)
         shell: pwsh
         run: |
-          mvn -B clean package javafx:jlink `
-            -DskipTests `
-            -Djavafx.platform=win
+          mvn -B clean package javafx:jlink "-DskipTests" "-Djavafx.platform=win"
 
       - name: Check jlink output
         shell: pwsh
