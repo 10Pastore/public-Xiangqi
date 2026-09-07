@@ -36,12 +36,15 @@ jobs:
       - name: Maven package
         shell: pwsh
         run: |
-          mvn -B clean package "-DskipTests" "-Djavafx.platform=win"
+          mvn -s .github/maven/settings.xml -B clean package "-DskipTests" "-Djavafx.platform=win"
 
       - name: Copy runtime jars and resources
         shell: pwsh
         run: |
-          mvn -B dependency:copy-dependencies `
+          # 确保目标目录存在，避免后续 Copy-Item 因目录不存在失败
+          New-Item -ItemType Directory -Force -Path target\app-input | Out-Null
+
+          mvn -s .github/maven/settings.xml -B dependency:copy-dependencies `
             "-DoutputDirectory=target/app-input" `
             "-DincludeScope=runtime" `
             "-Djavafx.platform=win"
