@@ -41,13 +41,11 @@ jobs:
       - name: Copy runtime jars
         shell: pwsh
         run: |
-          # 所有运行依赖（含 JavaFX win 原生库）
           mvn -B dependency:copy-dependencies `
             "-DoutputDirectory=target/app-input" `
             "-DincludeScope=runtime" `
             "-Djavafx.platform=win"
 
-          # 主程序 jar
           Copy-Item "target\Xiangqi-1.0-SNAPSHOT.jar" "target\app-input\" -Force
 
           Write-Host "app-input 内容："
@@ -68,18 +66,31 @@ jobs:
             --app-version "${{ steps.ver.outputs.version }}" `
             --vendor "TChess" `
             --description "TChess Xiangqi GUI" `
+            --win-console `
             --java-options "-Dfile.encoding=UTF-8" `
+            --java-options "--module-path=`$APPDIR" `
             --java-options "--add-modules=javafx.controls,javafx.fxml,javafx.graphics,javafx.media,javafx.swing"
+
+          Write-Host "检查 dist\TChess 结构："
+          Get-ChildItem dist\TChess | Select-Object Name
+          Get-ChildItem dist\TChess\runtime\bin -ErrorAction SilentlyContinue | Select-Object Name
+
+          if (-not (Test-Path "dist\TChess\runtime\bin\java.exe")) {
+            Write-Host "runtime\bin 完整列表："
+            Get-ChildItem "dist\TChess\runtime\bin" -ErrorAction SilentlyContinue | Format-Table Name, Length
+            throw "jpackage 产物缺少 java.exe，打包不完整"
+          }
+
+          if (-not (Test-Path "dist\TChess\TChess.exe")) {
+            throw "缺少 TChess.exe"
+          }
 
       - name: Zip the app-image
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist\TChess")) {
-            Write-Host "dist 目录内容："
-            Get-ChildItem dist -Recurse -Depth 2 | Select-Object FullName
-            throw "dist\TChess 不存在，jpackage 失败"
-          }
-          Compress-Archive -Path dist\TChess\* -DestinationPath dist\TChess-Windows.zip -Force
+          # 打整个文件夹，避免漏文件
+          if (Test-Path dist\TChess-Windows.zip) { Remove-Item dist\TChess-Windows.zip -Force }
+          Compress-Archive -Path dist\TChess -DestinationPath dist\TChess-Windows.zip -Force
           Get-Item dist\TChess-Windows.zip | Select-Object Name, Length
 
       - name: Upload artifact
