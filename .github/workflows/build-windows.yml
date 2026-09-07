@@ -71,14 +71,36 @@ jobs:
             --java-options "--module-path=`$APPDIR" `
             --java-options "--add-modules=javafx.controls,javafx.fxml,javafx.graphics,javafx.media,javafx.swing"
 
-          Write-Host "检查 dist\TChess 结构："
-          Get-ChildItem dist\TChess | Select-Object Name
-          Get-ChildItem dist\TChess\runtime\bin -ErrorAction SilentlyContinue | Select-Object Name
+          $bin = "dist\TChess\runtime\bin"
+          if (-not (Test-Path $bin)) {
+            throw "找不到 dist\TChess\runtime\bin，jpackage 可能失败"
+          }
 
-          if (-not (Test-Path "dist\TChess\runtime\bin\java.exe")) {
-            Write-Host "runtime\bin 完整列表："
-            Get-ChildItem "dist\TChess\runtime\bin" -ErrorAction SilentlyContinue | Format-Table Name, Length
-            throw "jpackage 产物缺少 java.exe，打包不完整"
+          # 若 jpackage 没带上 java.exe，从当前 JDK 补进去
+          if (-not (Test-Path "$bin\java.exe")) {
+            Write-Host "jpackage 未生成 java.exe，从 JAVA_HOME 复制..."
+            Write-Host "JAVA_HOME = $env:JAVA_HOME"
+            if (-not $env:JAVA_HOME) { throw "JAVA_HOME 为空，无法补 java.exe" }
+
+            Copy-Item "$env:JAVA_HOME\bin\java.exe"  "$bin\" -Force
+            Copy-Item "$env:JAVA_HOME\bin\javaw.exe" "$bin\" -Force -ErrorAction SilentlyContinue
+
+            # 有些依赖也需要
+            $extras = @("jimage.dll", "jli.dll", "java.dll")
+            foreach ($f in $extras) {
+              $src = Join-Path $env:JAVA_HOME "bin\$f"
+              if (Test-Path $src) {
+                Copy-Item $src "$bin\" -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
+
+          Write-Host "runtime\bin 中的 exe："
+          Get-ChildItem $bin -Filter *.exe | Select-Object Name, Length
+
+          if (-not (Test-Path "$bin\java.exe")) {
+            Get-ChildItem $bin | Format-Table Name, Length
+            throw "补完后仍缺少 java.exe"
           }
 
           if (-not (Test-Path "dist\TChess\TChess.exe")) {
