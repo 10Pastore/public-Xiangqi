@@ -38,7 +38,7 @@ jobs:
         run: |
           mvn -B clean package "-DskipTests" "-Djavafx.platform=win"
 
-      - name: Copy runtime jars
+      - name: Copy runtime jars and resources
         shell: pwsh
         run: |
           mvn -B dependency:copy-dependencies `
@@ -48,8 +48,18 @@ jobs:
 
           Copy-Item "target\Xiangqi-1.0-SNAPSHOT.jar" "target\app-input\" -Force
 
+          # 程序通过 getJarPath() 读外部文件，必须和 jar 放一起
+          $res = "src\main\resources"
+          foreach ($dir in @("sound", "ui", "model", "image", "font")) {
+            $src = Join-Path $res $dir
+            if (Test-Path $src) {
+              Copy-Item $src "target\app-input\" -Recurse -Force
+              Write-Host "已复制资源: $dir"
+            }
+          }
+
           Write-Host "app-input 内容："
-          Get-ChildItem target\app-input | Select-Object Name, Length
+          Get-ChildItem target\app-input | Select-Object Name, Mode, Length
 
       - name: Create EXE with jpackage
         shell: pwsh
